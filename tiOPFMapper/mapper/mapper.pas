@@ -49,7 +49,7 @@ type
   // -----------------------------------------------------------------
 
   {: Type of class property. }
-  TMapPropType = (ptString, ptAnsiString, ptDouble, ptSingle, ptCurrency, ptInteger, ptInt64, ptDateTime, ptBoolean, ptEnum, ptEnumSet, ptStream);
+  TMapPropType = (ptString, ptAnsiString, ptDouble, ptSingle, ptCurrency, ptInteger, ptInt64, ptDateTime, ptBoolean, ptEnum, ptEnumSet, ptStream, ptOIDBased);
 
   {: Type of class definition to create. }
   TClassDefType = (dtCreate, dtReference);
@@ -367,16 +367,25 @@ type
 
 
   {: Stores information about a class property. }
+
+  { TMapClassProp }
+
   TMapClassProp = class(TBaseMapObject)
   private
+    FIsOIDReference: boolean;
     FIsReadOnly: boolean;
+    FIsStreamBased: boolean;
     FName: string;
     FPropertyType: TMapPropertyType;
     FPropTypeName: string;
+    FSelectionFunc: String;
     FVirtualGetter: boolean;
+    procedure SetIsOIDReference(AValue: boolean);
     procedure SetIsReadOnly(const AValue: boolean);
+    procedure SetIsStreamBased(AValue: boolean);
     procedure SetPropName(const AValue: string);
     procedure SetPropType(const AValue: TMapPropertyType);
+    procedure SetSelectionFunc(AValue: String);
     procedure SetVirtualGetter(AValue: boolean);
   protected
     procedure AssignClassProps(ASource: TtiObject); override;
@@ -385,6 +394,9 @@ type
     property PropertyType: TMapPropertyType read FPropertyType write SetPropType;
     property IsReadOnly: boolean read FIsReadOnly write SetIsReadOnly;
     property VirtualGetter: boolean read FVirtualGetter write SetVirtualGetter;
+    property IsStreamBased: boolean read FIsStreamBased write SetIsStreamBased;
+    property IsOIDReference: boolean read FIsOIDReference write SetIsOIDReference;
+    property SelectionFunc: String read FSelectionFunc write SetSelectionFunc;
   end;
 
   TMapClassPropList = class(TBaseMapObjectList)
@@ -400,6 +412,9 @@ type
 
 
   {: Stores info about the mapping between a class property and its corresponding database field name. }
+
+  { TPropMapping }
+
   TPropMapping = class(TBaseMapObject)
   private
     FFieldName: string;
@@ -739,7 +754,12 @@ type
 
 
   {: TtiFilteredObjectList descendant with extra properties to facilitate custom searching/queries. }
+
+  { TtiMappedFilteredObjectList }
+
   TtiMappedFilteredObjectList = class(TtiFilteredObjectList)
+  private
+    class var FPropTypes: TMapPropertyTypeList;
   private
     FEnumType: TEnumType;
     FObjClass: TtiObjectClass;
@@ -751,12 +771,14 @@ type
   public
     constructor Create; override;
     destructor Destroy; override;
+    class destructor Destroy;
     //function IsValid(const AErrors: TtiObjectErrors): boolean; overload; override;
     property SQL: string read FSQL write SetSQL;
     property ObjClass: TtiObjectClass read FObjClass write SetObjClass;
     property EnumType: TEnumType read FEnumType write SetEnumType;
     property Params: TSelectParamList read FParams;
     procedure AddParam(const AName: string; const ASQLParamName: string; AParamType: TMapPropertyType; AValue: Variant);
+    procedure AddParam(const AName: string; const ASQLParamName: string; AParamType: TMapPropType; AValue: Variant);
   end;
 
 
@@ -1720,6 +1742,21 @@ begin
   NotifyObservers;
 end;
 
+procedure TMapClassProp.SetIsOIDReference(AValue: boolean);
+begin
+  if FIsOIDReference=AValue then Exit;
+  FIsOIDReference:=AValue;
+  NotifyObservers;
+end;
+
+procedure TMapClassProp.SetIsStreamBased(AValue: boolean);
+begin
+  if FIsStreamBased=AValue then Exit;
+  FIsStreamBased:=AValue;
+
+  NotifyObservers;
+end;
+
 procedure TMapClassProp.SetPropName(const AValue: string);
 begin
   if FName = AValue then
@@ -1735,6 +1772,13 @@ begin
     exit;
 
   FPropertyType := AValue;
+  NotifyObservers;
+end;
+
+procedure TMapClassProp.SetSelectionFunc(AValue: String);
+begin
+  if FSelectionFunc=AValue then Exit;
+  FSelectionFunc:=AValue;
   NotifyObservers;
 end;
 
@@ -2420,6 +2464,28 @@ begin
   FParams.Add(lParam);
 end;
 
+procedure TtiMappedFilteredObjectList.AddParam(const AName: string;
+  const ASQLParamName: string; AParamType: TMapPropType; AValue: Variant);
+var
+  lTypeName: String;
+  lPropType: TMapPropertyType;
+  i: Integer;
+begin
+  if FPropTypes = nil then
+    FPropTypes := TMapPropertyTypeList.Create;
+
+  lTypeName := gPropTypeToStr(AParamType);
+  lPropType := FPropTypes.FindByTypeName(lTypeName);
+
+  if lPropType = nil then
+  begin
+    i := FPropTypes.Add(lTypeName, AParamType);
+    lPropType := FPropTypes.Items[i];
+  end;
+
+  AddParam(AName, ASQLParamName, lPropType, AValue);
+end;
+
 constructor TtiMappedFilteredObjectList.Create;
 begin
   inherited Create;
@@ -2430,6 +2496,12 @@ destructor TtiMappedFilteredObjectList.Destroy;
 begin
   FParams.Free;
   inherited Destroy;
+end;
+
+class destructor TtiMappedFilteredObjectList.Destroy;
+begin
+  if Assigned(FPropTypes) then
+    FreeAndNil(FPropTypes);
 end;
 
 procedure TtiMappedFilteredObjectList.SetEnumType(const AValue: TEnumType);

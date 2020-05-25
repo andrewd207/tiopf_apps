@@ -64,7 +64,7 @@ begin
     lPath := GetOptionValue('f', 'file');
 
     TAppModel.Instance.LoadProject(lPath);
-    TAppModel.Instance.WriteProject(
+    TAppModel.Instance.WriteProject(False,
                                HasOption('v', '-verbose'),
                                {$IFDEF FPC}@{$ENDIF}OnWriteClass,
                                {$IFDEF FPC}@{$ENDIF}OnWriteEnum,

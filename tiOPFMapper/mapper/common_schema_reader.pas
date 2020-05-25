@@ -255,6 +255,7 @@ begin
       lMapPropNode := lNode.Attributes.GetNamedItem('setter');
       if Assigned(lMapPropNode) then
         lNewMapProp.PropertySetter := lMapPropNode.NodeValue;
+
       lMapPropNode := lNode.Attributes.GetNamedItem('abstract');
       if Assigned(lMapPropNode) then
       begin
@@ -276,6 +277,13 @@ begin
         lNewMapProp.PropertyType := TAppModel.Instance.CurrentPropertyTypes.FindByTypeName('String')
       else
         lNewMapProp.PropertyType := TAppModel.Instance.CurrentPropertyTypes.FindByTypeName(lMapNode.NodeValue);
+
+      if not Assigned(lNewMapProp.PropertyType) and (LowerCase(lMapNode.NodeValue) = 'blob') then
+        lNewMapProp.PropertyType := TAppModel.Instance.CurrentPropertyTypes.FindByTypeName('TStream');
+
+      if not Assigned(lNewMapProp.PropertyType) then
+        raise Exception.CreateFmt('Unhandled mapping property type: %s', [lMapNode.NodeValue]);
+
 
       AClass.ClassMapping.PropMappings.Add(lNewMapProp);
     end;
@@ -314,23 +322,53 @@ begin
       else
         lNewProp.VirtualGetter := false;
 
+      // is a TStream based property?
+      lPropAttr := lPropNode.Attributes.GetNamedItem('stream-based');
+
+      if lPropAttr <> nil then
+        lNewProp.IsStreamBased := StrToBool(lPropAttr.NodeValue)
+      else
+        lNewProp.IsStreamBased := false;
+
+      // if present but has no value then it's "true"
+      // the mapping will need to know the object type
+      lPropAttr := lPropNode.Attributes.GetNamedItem('oid-reference');
+      if lPropAttr <> nil then
+        lNewProp.IsOIDReference := (lPropAttr.NodeValue = '') or StrToBool(lPropAttr.NodeValue)
+      else
+        lNewProp.IsOIDReference := false;
+
+      lPropAttr := lPropNode.Attributes.GetNamedItem('selection-func');
+      if Assigned(lPropAttr) then
+        lNewProp.SelectionFunc := lPropAttr.NodeValue;
+
       // Property type?
       lPropAttr := lPropNode.Attributes.GetNamedItem('type');
 
-      if lPropAttr <> nil then
+      if (lPropAttr = nil) or (lPropAttr.NodeValue = '') then
       begin
-        if lPropAttr.NodeValue <> '' then
-        begin
-          lNewProp.PropertyType := TAppModel.Instance.CurrentPropertyTypes.FindByTypeName(lPropAttr.NodeValue);
-        end
-        else
-        begin
-          lNewProp.PropertyType := TAppModel.Instance.CurrentPropertyTypes.FindByTypeName('String');
-        end;
+        lNewProp.PropertyType := TAppModel.Instance.CurrentPropertyTypes.FindByTypeName('String');
       end
       else
       begin
-        lNewProp.PropertyType := TAppModel.Instance.CurrentPropertyTypes.FindByTypeName('String');
+        lNewProp.PropertyType := TAppModel.Instance.CurrentPropertyTypes.FindByTypeName(lPropAttr.NodeValue);
+        if lNewProp.PropertyType = nil then
+        begin
+          if lNewProp.IsStreamBased then
+          begin
+            TAppModel.Instance.CurrentPropertyTypes.Add(lPropAttr.NodeValue, ptStream);
+            lNewProp.PropertyType := TAppModel.Instance.CurrentPropertyTypes.FindByTypeName(lPropAttr.NodeValue);
+          end
+          else if lNewProp.IsOIDReference then
+          begin
+            TAppModel.Instance.CurrentPropertyTypes.Add(lPropAttr.NodeValue, ptOIDBased);
+            lNewProp.PropertyType := TAppModel.Instance.CurrentPropertyTypes.FindByTypeName(lPropAttr.NodeValue);
+          end
+          else
+          begin
+            raise Exception.CreateFmt('Unhandled property type "%s"', [lPropAttr.NodeValue]);
+          end;
+        end;
       end;
 
       AClass.ClassProps.Add(lNewProp);

@@ -67,8 +67,9 @@ type
     procedure SaveProjectAs(const AFileName: string);
     procedure CreateNewProject(const AFileName: string);
     procedure CloseProject;
-    procedure WriteProject(AVerbose: Boolean; AOnWriteClass: TOnWriteClassIntf;
-      AOnWriteEnum: TOnWriteEnum; AOnWriteUnit: TOnWriteUnit); overload;
+    procedure WriteProject(ASave: Boolean; AVerbose: Boolean;
+      AOnWriteClass: TOnWriteClassIntf; AOnWriteEnum: TOnWriteEnum;
+  AOnWriteUnit: TOnWriteUnit); overload;
 
     property Project: TMapProject read FProject write SetProject;
     property State: TModelProjectState read FState write SetState;
@@ -196,6 +197,8 @@ begin
   CurrentPropertyTypes.Add('TDateTime', ptDateTime);
   CurrentPropertyTypes.Add('Boolean', ptBoolean);
   CurrentPropertyTypes.Add('Enum', ptEnum);
+  CurrentPropertyTypes.Add('EnumSet', ptEnumSet);
+  CurrentPropertyTypes.Add('TStream', ptStream);
 
 end;
 
@@ -385,7 +388,7 @@ begin
   CurrentEnums.NotifyObservers;
 end;
 
-procedure TAppModel.WriteProject(AVerbose: Boolean;
+procedure TAppModel.WriteProject(ASave: Boolean; AVerbose: Boolean;
   AOnWriteClass: TOnWriteClassIntf; AOnWriteEnum: TOnWriteEnum;
   AOnWriteUnit: TOnWriteUnit);
 var
@@ -394,7 +397,8 @@ begin
   if State = mpsClosed then
     raise Exception.Create(ClassName + '.WriteProject: No project loaded');
 
-  SaveProject;
+  if ASave then
+    SaveProject;
 
   lWriter := TMapperProjectWriter.Create(Project);
   lWriter.Verbose:=AVerbose;

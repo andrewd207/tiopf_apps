@@ -724,7 +724,7 @@ begin
   begin
     lProp := AClassDef.ClassProps.Items[lCtr];
 
-    if lProp.VirtualGetter then
+    if lProp.VirtualGetter or lProp.IsOIDReference then
       WritePropGetter(ASL, lProp);
 
     if not lProp.IsReadOnly then
@@ -1097,6 +1097,14 @@ begin
           DecTab;
           WriteLine('end;', ASL);
         end;
+    ptOIDBased:
+      begin
+        case AClassDef.ClassMapping.OIDType of
+          otString: WriteLine('Query.ParamAsString[''' + lParam.SQLParamName + '''] := lParam.Value;', ASL);
+          otInt   : WriteLine('Query.ParamAsInteger[''' + lParam.SQLParamName + '''] := lParam.Value;', ASL);
+        end;
+
+      end;
     end;
   end;
 
@@ -1496,6 +1504,13 @@ begin
           DecTab;
           WriteLine('end;', ASL);
         end;
+        ptOIDBased:
+          begin
+            case AClassDef.ClassMapping.OIDType of
+              otString: WriteLine('lObj.F' + lPropMap.PropName + 'OID := Query.FieldAsString[''' + lPropMap.FieldName + '''];', ASL);
+              otInt   : WriteLine('lObj.F' + lPropMap.PropName + 'OID := Query.FieldAsInteger[''' + lPropMap.FieldName + '''];', ASL);
+            end;
+          end;
     end;
   end;
 end;
@@ -1559,6 +1574,13 @@ begin
           DecTab;
           WriteLine('end;', ASL);
         end;
+      ptOIDBased:
+        begin
+          case AClassDef.ClassMapping.OIDType of
+            otString: WriteLine('lObj.F' + lPropMap.PropName + 'OID := Query.FieldAsString[''' + lPropMap.FieldName + '''];', ASL);
+            otInt   : WriteLine('lObj.F' + lPropMap.PropName + 'OID := Query.FieldAsInteger[''' + lPropMap.FieldName + '''];', ASL);
+          end;
+        end;
     end;
   end;
 
@@ -1568,16 +1590,60 @@ procedure TMapperProjectWriter.WriteClassImpSettersGetters(ASL: TStringList; ACl
 var
   lCtr: integer;
   lMap: TMapClassProp;
+  lPrivVar: String;
 begin
   for lCtr := 0 to AClassDef.ClassProps.Count - 1 do
   begin
     lMap := AClassDef.ClassProps.Items[lCtr];
-    if lMap.VirtualGetter then
+    lPrivVar := 'F' + lMap.Name;
+    if lMap.VirtualGetter or lMap.IsOIDReference then
     begin
       WriteLine('function ' + AClassDef.BaseClassName + '.Get' + lMap.Name + ': ' + lMap.PropertyType.TypeName + ';', ASL);
       WriteLine('begin', ASL);
       IncTab;
-      WriteLine('Result := F' + lMap.Name + ';', ASL);
+      if lMap.PropertyType.BaseType = ptOIDBased then
+      begin
+        WriteLine('if not Assigned('+ lPrivVar + ') and ('+lPrivVar+'OID <> '''') then', ASL);
+        WriteLine('begin', ASL);
+        IncTab;
+        // TODO: use list class item type
+        WriteLine(lPrivVar+' := ' + lMap.PropertyType.TypeName + '.Create;', ASL);
+        WriteLine(lPrivVar+'.Owner := Self;', ASL);
+        DecTab;
+        WriteLine('end;', ASL);
+        WriteLine('if Assigned('+ lPrivVar + ') and ('+lPrivVar+'.ObjectState = posCreate) then', ASL);
+        WriteLine('begin', ASL);
+        IncTab;
+        if lMap.SelectionFunc <> '' then
+        begin
+          // a list type
+          case AClassDef.ClassMapping.OIDType of
+            otString : WriteLine(Format('%s.%s(Self.OID.AsString);', [lPrivVar, lMap.SelectionFunc]), ASL);
+            otInt    : WriteLine(Format('%s.%s(StrToInt64(Self.OID.AsString));', [lPrivVar, lMap.SelectionFunc]), ASL);
+          end;
+        end
+        else
+        begin
+          // is a TtiObject type
+          case AClassDef.ClassMapping.OIDType of
+            otString :
+              begin
+                WriteLine(lPrivVar+'.OID.AsString := '+ lPrivVar+'OID;', ASL);
+              end;
+            otInt :
+              begin
+                WriteLine(lPrivVar+'.OID.AsString := IntToStr(F'+ lPrivVar+'OID);', ASL);
+                WriteLine(Format('%s.%s(StrToInt64(Self.OID.AsString));', [lPrivVar, lMap.SelectionFunc]), ASL);
+              end;
+          else
+            raise Exception.Create('Unhandled OIDType:' + IntToStr(ord(AClassDef.ClassMapping.OIDType)));
+          end;
+          WriteLine(Format('%s.Read();', [lPrivVar]), ASL);
+        end;
+        DecTab;
+        WriteLine('end;', ASL);
+      end;
+      WriteLine('Result := ' + lPrivVar + ';', ASL);
       DecTab;
       WriteLine('end;', ASL);
       WriteBreak(ASL);
@@ -1599,7 +1665,37 @@ begin
       WriteLine('if Assigned(F' + lMap.Name + ') then', ASL);
       WriteLine('  FreeAndNil(F' + lMap.Name + ');', ASL);
     end;
+    if lMap.PropertyType.BaseType = ptOIDBased then
+    begin
+      WriteLine('if Assigned(' + lPrivVar + ') and ('+lPrivVar+'.Owner = Self) then', ASL);
+      IncTab;
+      WriteLine('FreeAndNil(F' + lMap.Name + ');', ASL);
+      DecTab;
+    end;
     WriteLine('F' + lMap.Name + ' := AValue;', ASL);
+
+    if lMap.PropertyType.BaseType = ptOIDBased then
+    begin
+      if lMap.SelectionFunc = '' then
+      begin
+        // is TtiObject not a list type
+        WriteLine('if Assigned('+lPrivVar+') then', ASL);
+        IncTab;
+        case AClassDef.ClassMapping.OIDType of
+            otString : WriteLine(lPrivVar+'OID := '+lPrivVar+'.OID.AsString', ASL);
+            otInt    : WriteLine(lPrivVar+'OID := StrToInt64('+lPrivVar+'.OID.AsString)', ASL);
+        end;
+        DecTab;
+        WriteLine('else' , ASL);
+        IncTab;
+        case AClassDef.ClassMapping.OIDType of
+            otString : WriteLine(lPrivVar+'OID := '''';', ASL);
+            otInt    : WriteLine(lPrivVar+'OID := 0;', ASL);
+        end;
+        DecTab;
+      end;
+    end;
+
     if AClassDef.NotifyObserversOfPropertyChanges then
       WriteLine('EndUpdate;', ASL);
     DecTab;
@@ -1681,8 +1777,16 @@ begin
   for lCtr := 0 to AClassDef.ClassProps.Count - 1 do
   begin
     lProp := AClassDef.ClassProps.Items[lCtr];
-    WriteLine('F' + lProp.Name + ': ' + lProp.PropertyType.TypeName + ';', ASL);
+        WriteLine('F' + lProp.Name + ': ' + lProp.PropertyType.TypeName + ';', ASL);
+    if lProp.IsOIDReference then
+    begin
+      case AClassDef.ClassMapping.OIDType of
+        otString:  WriteLine('F' + lProp.Name + 'OID : String;', ASL);
+        otInt   :  WriteLine('F' + lProp.Name + 'OID : Int64;', ASL);
+      end;
+
   end;
+    end;
 end;
 
 procedure TMapperProjectWriter.WritePropSetter(ASL: TStringList; APropDef: TMapClassProp);
@@ -1808,7 +1912,13 @@ begin
           WriteLine('end;', ASL);
 
         end;
-
+      ptOIDBased:
+        begin
+          WriteLine('if Assigned(lObj.'+ lPropMap.PropName + ') then', ASL);
+          IncTab;
+          WriteLine('Query.ParamAsString[''' + lPropMap.FieldName + '''] := lObj.'+lPropMap.PropName+'.OID.AsString;', ASL);
+          DecTab;
+        end;
     end;
   end;
 end;
@@ -1823,7 +1933,7 @@ var
   lTemp: string;
 begin
   lTemp := 'property    ' + AClassProp.Name + ': ' + AClassProp.PropertyType.TypeName + ' read ';
-  if AClassProp.VirtualGetter then
+  if AClassProp.VirtualGetter or AClassProp.IsOIDReference then
     lTemp := lTemp + 'Get' + AClassProp.Name
   else
     lTemp := lTemp + 'F' + AClassProp.Name;

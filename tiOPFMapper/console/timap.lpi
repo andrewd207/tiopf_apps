@@ -24,14 +24,14 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="-f &quot;\home\andrew\Programming\GroupProjects\tiopf_apps\tiOPFMapper\demos\schema\sample.xml&quot;"/>
+        <CommandLineParams Value="-f \home\andrew\Programming\Projects\LazarusProjects\INventoryEstimate\schema\schema.xml"/>
         <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T &apos;Lazarus Run Output&apos; -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="-f &quot;\home\andrew\Programming\GroupProjects\tiopf_apps\tiOPFMapper\demos\schema\sample.xml&quot;"/>
+            <CommandLineParams Value="-f \home\andrew\Programming\Projects\LazarusProjects\INventoryEstimate\schema\schema.xml"/>
             <LaunchingApplication PathPlusParams="\usr\X11R6\bin\xterm -T &apos;Lazarus Run Output&apos; -e $(LazarusDir)\tools\runwait.sh $(TargetCmdLine)"/>
           </local>
         </Mode0>
